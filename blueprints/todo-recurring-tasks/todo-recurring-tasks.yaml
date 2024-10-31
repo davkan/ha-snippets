@@ -1,0 +1,146 @@
+blueprint:
+  name: ToDo wiederkehrende Aufgaben
+  description: "Beobachtet eine ToDo-Liste und setzt Aufgaben nach einer festgelegten
+    Zeit wieder auf offen. \nDie Beschreibung jeder Aufgabe sollte eine  Zahl (die
+    Anzahl der Tage bis die Aufgabe wieder offen ist) sein.\n(Optional) Fasst den
+    Status der Aufgaben in einer input-select-Entity  zusammen, weil die direkte Abfrage
+    im Frontend (derzeit) nicht möglich ist.\n"
+  domain: automation
+  author: davkan
+  input:
+    entity_todo:
+      name: ToDo-Liste
+      selector:
+        entity:
+          filter:
+          - domain:
+            - todo
+          multiple: false
+    entity_input:
+      name: Input-Select
+      description: (optional) Input-Select Entity für das Frontend mit einziger Option
+        "A DUMMY"
+      selector:
+        entity:
+          filter:
+          - domain:
+            - input_select
+          multiple: false
+      default: {}
+  source_url: https://gist.github.com/davkan/86aba8d5945813f65a031200c9c41a78
+mode: single
+max_exceeded: silent
+triggers:
+- trigger: state
+  entity_id:
+  - !input entity_todo
+  id: state-change
+  alias: Änderung an entity_todo
+- trigger: time
+  at: 00:00:00
+  id: daily
+  alias: Täglich
+- trigger: homeassistant
+  event: start
+  id: startup
+variables:
+  entity_todo: !input entity_todo
+actions:
+- action: todo.get_items
+  metadata: {}
+  data:
+    status:
+    - completed
+  target:
+    entity_id: !input entity_todo
+  response_variable: erledigt
+  alias: erledigte Aufgaben abfragen
+- alias: Für jede erledigte Aufgabe
+  repeat:
+    sequence:
+    - alias: Überspringen, falls noch nicht fällig
+      condition: template
+      value_template: "{{\n  'due' in repeat.item\n  and repeat.item['due']|as_datetime|as_local
+        <= now() \n}}"
+    - choose:
+      - conditions:
+        - condition: trigger
+          id:
+          - daily
+        sequence:
+        - action: todo.update_item
+          metadata: {}
+          data:
+            status: needs_action
+            item: '{{repeat.item.summary}}'
+          target:
+            entity_id: !input entity_todo
+          alias: Aufgabe auf offen setzen
+      - conditions:
+        - condition: trigger
+          id:
+          - state-change
+        sequence:
+        - alias: Überspringen, falls Beschreibung keine Zahl ist
+          condition: template
+          value_template: "{{\n  'description' in repeat.item \n  and repeat.item['description']|is_number\n}}"
+        - action: todo.update_item
+          metadata: {}
+          data:
+            due_date: '{{(today_at()+timedelta(days=repeat.item.description|int)).date()}}'
+            item: '{{repeat.item.summary}}'
+          target:
+            entity_id: !input entity_todo
+          alias: nächstes Fälligkeitsdatum setzen
+    for_each: '{{erledigt[entity_todo][''items'']}}'
+- alias: offene Aufgaben abfragen
+  action: todo.get_items
+  metadata: {}
+  data:
+    status:
+    - needs_action
+  target:
+    entity_id: !input entity_todo
+  response_variable: offen
+- alias: Für jede offene Aufgabe
+  repeat:
+    sequence:
+    - alias: Überspringen, falls schon fällig
+      condition: template
+      value_template: "{{\n  (\n    'due' in repeat.item\n    and repeat.item['due']|as_datetime|as_local
+        > now()\n  )\n  or 'due' not in repeat.item\n}}"
+    - action: todo.update_item
+      metadata: {}
+      data:
+        due_date: '{{(today_at()).date()}}'
+        item: '{{repeat.item.summary}}'
+      target:
+        entity_id: !input entity_todo
+      alias: Fälligkeitsdatum auf heute setzen
+    for_each: '{{offen[entity_todo][''items'']}}'
+- action: todo.get_items
+  metadata: {}
+  data:
+    status:
+    - completed
+  target:
+    entity_id: !input entity_todo
+  response_variable: erledigt
+  alias: erledigte Aufgaben abfragen
+- alias: offene Aufgaben abfragen
+  action: todo.get_items
+  metadata: {}
+  data:
+    status:
+    - needs_action
+  target:
+    entity_id: !input entity_todo
+  response_variable: offen
+- action: input_select.set_options
+  target:
+    entity_id: !input entity_input
+  data:
+    options: "[\n  'A DUMMY',\n{%- for todo in offen[entity_todo]['items'] -%}\n  'O
+      {{todo.due}} {{todo.summary}}',\n{%- endfor -%}\n{%- for todo in erledigt[entity_todo]['items']
+      -%}\n  'X {{todo.due}} {{todo.summary}}',\n{%- endfor -%}\n]\n"
+  alias: Aktualisiere die Einträge von entity_input
