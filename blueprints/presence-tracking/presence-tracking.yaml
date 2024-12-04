@@ -1,0 +1,167 @@
+blueprint:
+  name: Presence-Tracking
+  description: "This automation tracks presence through different entities with 
+    advanced options for keeping presence after activities."
+  domain: automation
+  author: davkan
+  input:
+    entity_output:
+      name: Output
+      description: Input Boolean for the output of the automation
+      selector:
+        entity:
+          filter:
+          - domain:
+            - input_boolean
+          multiple: false
+    entity_trigger_on:
+      name: Presence-Entities (on)
+      description: Triggers presence if one of these is on
+      default: []
+      selector:
+        entity:
+          filter:
+          - domain:
+            - binary_sensor
+            - input_boolean
+          multiple: true
+    entity_trigger_off:
+      name: Presence-Entities (off)
+      description: Triggers presence if one of these is off
+      default: []
+      selector:
+        entity:
+          filter:
+          - domain:
+            - binary_sensor
+            - input_boolean
+          multiple: true
+    template_trigger:
+      name: Presence-Template
+      description: Triggers presence if template evaluates to true
+      default: "{{false}}"
+      selector:
+        template:
+    template_trigger_neg:
+      name: Presence-Template (negation)
+      description: Must be the negation of the previous template '{{not ...}}'
+      default: "{{true}}"
+      selector:
+        template:
+    delay_normal:
+      name: Delay (base)
+      description: base duration of presence-off delay after last activity
+      default: '0:1:00'
+      selector:
+        time:
+    delay_slow:
+      name: Delay (slow)
+      description: longer duration of presence-off delay after last activity
+      default: '0:5:00'
+      selector:
+        time:
+    entity_slow_on:
+      name: slow Entities (on)
+      description: Sets presence-off delay to slowed one while on
+      default: []
+      selector:
+        entity:
+          filter:
+          - domain:
+            - binary_sensor
+            - input_boolean
+          multiple: true
+    entity_slow_off:
+      name: slow Entities (off)
+      description: Sets presence-off delay to slowed one while off
+      default: []
+      selector:
+        entity:
+          filter:
+          - domain:
+            - binary_sensor
+            - input_boolean
+          multiple: true
+    template_slow:
+      name: slow Template
+      description: Sets presence-off delay to slowed one while false
+      default: "{{true}}"
+      selector:
+        template:
+    entity_lock_on:
+      name: lock Entities (on)
+      description: Presence won't switch to off while these are on
+      default: []
+      selector:
+        entity:
+          filter:
+          - domain:
+            - binary_sensor
+            - input_boolean
+          multiple: true
+    entity_lock_off:
+      name: lock Entities (off)
+      description: Presence won't switch to off while these are off
+      default: []
+      selector:
+        entity:
+          filter:
+          - domain:
+            - binary_sensor
+            - input_boolean
+          multiple: true
+    template_lock:
+      name: lock Template
+      description: Presence won't switch to off while this template is false
+      default: "{{true}}"
+      selector:
+        template:
+  source_url: https://github.com/davkan/ha-snippets/blob/main/blueprints/presence-tracking/presence-tracking.yaml
+
+mode: restart
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input entity_trigger_on
+    to: "on"
+  - trigger: state
+    entity_id: !input entity_trigger_off
+    to: "off"
+  - trigger: template
+    value_template: !input template_trigger
+
+variables:
+  entity_trigger_on: !input entity_trigger_on
+  entity_trigger_off: !input entity_trigger_off
+  template_trigger: !input template_trigger
+  entity_slow_on: !input entity_slow_on
+  entity_slow_off: !input entity_slow_off
+  entity_lock_on: !input entity_lock_on
+  entity_lock_off: !input entity_lock_off
+
+actions:
+  - action: input_boolean.turn_on
+    target:
+      entity_id: !input entity_output
+  - parallel:
+      - wait_template: '{{entity_trigger_on|length == entity_trigger_on|select("is_state","off")|list|length}}'
+      - wait_template: '{{entity_trigger_off|length == entity_trigger_off|select("is_state","on")|list|length}}'
+      - wait_template: !input template_trigger_neg
+  - parallel:
+      - delay: !input delay_normal
+      - wait_template: '{{entity_slow_on|length == entity_slow_on|select("is_state","off")|list|length}}'
+        continue_on_timeout: true
+        timeout: !input delay_slow
+      - wait_template: '{{entity_slow_off|length == entity_slow_off|select("is_state","on")|list|length}}'
+        continue_on_timeout: true
+        timeout: !input delay_slow
+      - wait_template: !input template_slow
+        continue_on_timeout: true
+        timeout: !input delay_slow
+      - wait_template: '{{entity_lock_on|length == entity_lock_on|select("is_state","off")|list|length}}'
+      - wait_template: '{{entity_lock_off|length == entity_lock_off|select("is_state","on")|list|length}}'
+      - wait_template: !input template_lock
+  - action: input_boolean.turn_off
+    target:
+      entity_id: !input entity_output
