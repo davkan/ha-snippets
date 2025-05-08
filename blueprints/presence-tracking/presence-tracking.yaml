@@ -150,17 +150,17 @@ actions:
       - wait_template: !input template_trigger_neg
   - parallel:
       - delay: !input delay_normal
-      - wait_template: '{{entity_slow_on|length == entity_slow_on|select("is_state","off")|list|length}}'
+      - wait_template: '{{entity_slow_on|length == 0 or entity_slow_on|select("is_state","off")|list|length > 0}}'
         continue_on_timeout: true
         timeout: !input delay_slow
-      - wait_template: '{{entity_slow_off|length == entity_slow_off|select("is_state","on")|list|length}}'
+      - wait_template: '{{entity_slow_off|length == 0 or entity_slow_off|select("is_state","on")|list|length > 0}}'
         continue_on_timeout: true
         timeout: !input delay_slow
       - wait_template: !input template_slow
         continue_on_timeout: true
         timeout: !input delay_slow
-      - wait_template: '{{entity_lock_on|length == entity_lock_on|select("is_state","off")|list|length}}'
-      - wait_template: '{{entity_lock_off|length == entity_lock_off|select("is_state","on")|list|length}}'
+      - wait_template: '{{entity_lock_on|length == 0 or entity_lock_on|select("is_state","off")|list|length > 0}}'
+      - wait_template: '{{entity_lock_off|length == 0 or entity_lock_off|select("is_state","on")|list|length > 0}}'
       - wait_template: !input template_lock
   - action: input_boolean.turn_off
     target:
